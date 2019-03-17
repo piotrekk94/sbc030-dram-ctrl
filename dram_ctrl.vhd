@@ -129,11 +129,8 @@ begin
 				state <= cas;
 			when cas =>
 				dram_cas <= cas_i;
-				state <= term;
-			when term =>
 				sterm <= '0';
 				state <= pre;
-
 			when ref_cas =>
 				dram_ras <= (others => '0');
 				state <= ref_ras;
