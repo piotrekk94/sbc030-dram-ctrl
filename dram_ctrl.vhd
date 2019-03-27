@@ -26,6 +26,10 @@ type state_type is (idle, ras, cas, term, pre, ref_cas, ref_ras);
 
 signal state : state_type;
 
+constant ref_cnt_max : integer := 180;
+constant pre_cnt_max : integer := 1;
+constant ras_ref_cnt_max : integer := 1;
+
 signal addr_mux : std_logic := '0';
 signal byte_sel : std_logic_vector(3 downto 0);
 
@@ -42,6 +46,9 @@ signal we_i : std_logic;
 begin
 
 	dram_we <= rw or we_i;
+	
+	scs_d <= scs when rising_edge(clk);
+	scs_dd <= scs_d when rising_edge(clk);
 	
 	cback <= '1';
 
@@ -72,17 +79,16 @@ begin
 				"1011" when addr(27 downto 26) = "01" else
 				"0111" when addr(27 downto 26) = "11";
 	
-	
 	scs_i <= scs;
 	
 	process(clk, rstn)
-	variable cnt : integer range 0 to 255;
+	variable cnt : integer range 0 to ref_cnt_max;
 	begin
 		if(rstn = '0')then
 			ref_req <= '0';
 			cnt := 0;
 		elsif(rising_edge(clk))then
-			if(cnt < 180)then
+			if(cnt < ref_cnt_max)then
 				cnt := cnt + 1;
 			else
 				ref_req <= '1';
@@ -96,6 +102,8 @@ begin
 	end process;
 	
 	process(clk, rstn)
+	variable pre_cnt : integer range 0 to pre_cnt_max;
+	variable ras_ref_cnt : integer range 0 to ras_ref_cnt_max;
 	begin
 		if(rstn = '0')then
 			state <= idle;
@@ -104,6 +112,9 @@ begin
 			dram_ras <= (others => '1');
 			dram_cas <= (others => '1');
 			sterm <= '1';
+			
+			pre_cnt := 0;
+			ras_ref_cnt := 0;
 		elsif(rising_edge(clk))then
 			ref_ack <= '0';
 			case state is
@@ -135,14 +146,23 @@ begin
 				dram_ras <= (others => '0');
 				state <= ref_ras;
 			when ref_ras =>
-				state <= pre;
-
+				if(ras_ref_cnt = ras_ref_cnt_max)then
+					state <= pre;
+					ras_ref_cnt := 0;
+				else
+					ras_ref_cnt := ras_ref_cnt + 1;
+				end if;
 			when pre =>
 				dram_ras <= (others => '1');
 				dram_cas <= (others => '1');
 				sterm <= '1';
 				we_i <= '0';
-				state <= idle;
+				if(pre_cnt = pre_cnt_max)then
+					state <= idle;
+					pre_cnt := 0;
+				else
+					pre_cnt := pre_cnt + 1;
+				end if;
 			when others =>
 				state <= idle;
 				addr_mux <= '0';
